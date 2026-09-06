@@ -26,9 +26,18 @@ jobs:
         run: yes | sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       - name: Build release APK
-        uses: gradle/gradle-build-action@v3
-        with:
-          arguments: assembleRelease --stacktrace
+        run: ./gradlew assembleRelease --stacktrace 2>&1 | tee ci-build.log
+
+      - name: Publish build log on failure
+        if: failure()
+        run: |
+          mkdir -p ci-log
+          cp ci-build.log ci-log/build.log
+          git config user.email "totootao@qq.com"
+          git config user.name "totootao"
+          git add ci-log/build.log
+          git commit -m "ci: attach build log" || true
+          git push || true
 
       - name: Upload APK artifact
         if: success()
