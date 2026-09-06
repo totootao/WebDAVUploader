@@ -11,6 +11,13 @@
 - 可选「忽略 SSL 证书」模式，方便连接自签名/测试服务器
 - 纯标准库实现（`HttpURLConnection`），不依赖任何第三方网络库
 
+## 下载 APK
+
+仓库根目录已包含编译并签名好的安装包：
+
+- `WebDAVUploader-v1.0.0.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
+- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.0.0.apk
+
 ## 构建
 
 ### 方式一：GitHub Actions 自动构建（推荐，无需本地环境）
