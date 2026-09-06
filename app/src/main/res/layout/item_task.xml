@@ -69,12 +69,38 @@
         android:progressDrawable="@drawable/progress_horizontal" />
 
     <TextView
-        android:id="@+id/tvTime"
+        android:id="@+id/tvNext"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="2dp"
         android:textColor="@color/text_hint"
         android:textSize="11sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tvTime"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/text_hint"
+            android:textSize="11sp" />
+
+        <CheckBox
+            android:id="@+id/cbRepeat"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:focusable="false"
+            android:text="@string/cb_repeat"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp" />
+    </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -96,10 +122,24 @@
             android:textSize="13sp" />
 
         <Button
+            android:id="@+id/btnPause"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:layout_weight="1"
+            android:background="@drawable/btn_outline"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:minHeight="38dp"
+            android:text="@string/btn_pause"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+
+        <Button
             android:id="@+id/btnDelete"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginLeft="10dp"
+            android:layout_marginLeft="8dp"
             android:layout_weight="1"
             android:background="@drawable/btn_danger"
             android:focusable="false"

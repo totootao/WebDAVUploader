@@ -1,34 +1,34 @@
 package com.totootao.webdavuploader;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.UriPermission;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.ConnectivityManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.provider.DocumentsContract;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.ProgressBar;
+import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -38,19 +38,21 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 主界面：两个标签页 —— 「任务」（多目录同步任务）与「配置」（WebDAV 登录 + 同步设置）。
+ * 主界面：两个标签页 ——「任务」（多目录同步任务）与「配置」（登录 + 同步设置）。
  * <p>
- * 同步规则：本地目录 → 远程目录，单向上传（不下载、不删除远端）；
- * 仅在 WiFi 下传输；远端同名同大小文件自动跳过。
+ * 同步逻辑全部在 {@link SyncEngine} 中，界面只负责展示与触发；
+ * 后台循环同步由 {@link SyncJobService} 通过 {@link Scheduler} 排程。
  * </p>
  */
 public class MainActivity extends Activity {
 
     private static final int REQ_PICK_DIR = 2001;
+    private static final int REQ_NOTIFY = 3001;
 
+        /** 每次进程启动只自动同步一次（旋转屏幕 / 切后台回来不会重复触发） */
+    private static boolean autoLaunched = false;
     // 顶部与标签
     private TextView tvWifi;
     private Button tabTasks, tabConfig;
@@ -65,19 +67,14 @@ public class MainActivity extends Activity {
     // 配置页
     private EditText etServer, etUser, etPass;
     private CheckBox cbInsecure;
-    private Switch swWifiOnly;
+    private Switch swWifiOnly, swAutoRepeat;
+    private Spinner spCooldown;
+    private TextView tvNextSync;
     private Button btnTest, btnSave;
 
-    private final List<Task> tasks = new ArrayList<>();
+    private SyncEngine engine;
     private TaskAdapter adapter;
-
-    private final Handler ui = new Handler(Looper.getMainLooper());
-    private final ExecutorService syncExec = Executors.newSingleThreadExecutor();
     private final ExecutorService miscExec = Executors.newCachedThreadPool();
-
-    /** 待同步任务 id 队列 */
-    private final List<String> queue = new ArrayList<>();
-    private final AtomicBoolean workerBusy = new AtomicBoolean(false);
 
     /** 目录名缓存，避免列表滚动时反复查询 */
     private final Map<String, String> dirLabelCache = new HashMap<>();
@@ -86,16 +83,14 @@ public class MainActivity extends Activity {
     private String[] pendingPicked;
     private TextView pendingTvDir;
 
+    private final SyncEngine.Listener engineListener = this::onEngineChanged;
+
     private final BroadcastReceiver netReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context c, Intent intent) {
             updateWifiHeader();
-            boolean pending;
-            synchronized (queue) {
-                pending = !queue.isEmpty();
-            }
-            if (pending && NetUtil.isWifi(c)) {
-                pumpQueue();
+            if (engine.pending() && NetUtil.isWifi(c)) {
+                engine.pumpNow();
             }
         }
     };
@@ -104,6 +99,8 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        engine = SyncEngine.get(this);
 
         tvWifi = findViewById(R.id.tvWifi);
         tabTasks = findViewById(R.id.tabTasks);
@@ -123,13 +120,14 @@ public class MainActivity extends Activity {
         etPass = findViewById(R.id.etPass);
         cbInsecure = findViewById(R.id.cbInsecure);
         swWifiOnly = findViewById(R.id.swWifiOnly);
+        swAutoRepeat = findViewById(R.id.swAutoRepeat);
+        spCooldown = findViewById(R.id.spCooldown);
+        tvNextSync = findViewById(R.id.tvNextSync);
         btnTest = findViewById(R.id.btnTest);
         btnSave = findViewById(R.id.btnSave);
 
         adapter = new TaskAdapter();
         lvTasks.setAdapter(adapter);
-
-        tasks.addAll(Prefs.loadTasks(this));
 
         // ---- 标签页 ----
         tabTasks.setOnClickListener(v -> showTab(true));
@@ -140,15 +138,17 @@ public class MainActivity extends Activity {
         btnNewTask.setOnClickListener(v -> showTaskDialog(null));
         btnSyncAll.setOnClickListener(v -> {
             if (!checkReady()) return;
-            int n = 0;
-            for (Task t : tasks) {
-                if (t.enabled && !t.isBusy()) {
-                    enqueue(t);
-                    n++;
-                }
-            }
+            int n = engine.syncAll();
             if (n == 0) {
-                Toast.makeText(this, R.string.toast_no_enabled_task, Toast.LENGTH_SHORT).show();
+                boolean anyPaused = false;
+                for (Task t : engine.tasks()) {
+                    if (t.enabled && t.paused) {
+                        anyPaused = true;
+                        break;
+                    }
+                }
+                Toast.makeText(this, anyPaused ? R.string.toast_all_paused
+                        : R.string.toast_no_enabled_task, Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -158,6 +158,8 @@ public class MainActivity extends Activity {
         etPass.setText(Prefs.pass(this));
         cbInsecure.setChecked(Prefs.insecure(this));
         swWifiOnly.setChecked(Prefs.wifiOnly(this));
+        swAutoRepeat.setChecked(Prefs.autoRepeat(this));
+        setupCooldownSpinner();
 
         btnSave.setOnClickListener(v -> {
             Prefs.saveConfig(this,
@@ -166,7 +168,10 @@ public class MainActivity extends Activity {
                     etPass.getText().toString(),
                     cbInsecure.isChecked(),
                     swWifiOnly.isChecked());
+            Prefs.saveRepeat(this, swAutoRepeat.isChecked(), selectedCooldown());
+            Scheduler.reschedule(this);
             updateWifiHeader();
+            refreshAll();
             Toast.makeText(this, R.string.toast_saved, Toast.LENGTH_SHORT).show();
         });
 
@@ -183,13 +188,13 @@ public class MainActivity extends Activity {
             btnTest.setText(R.string.btn_testing);
             miscExec.execute(() -> {
                 int code = WebDavClient.probe(server, user, pass, insecure);
-                ui.post(() -> {
+                runOnUiThread(() -> {
                     btnTest.setEnabled(true);
                     btnTest.setText(R.string.btn_test);
                     if (code >= 200 && code < 400) {
-                        Toast.makeText(MainActivity.this, R.string.test_ok, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, R.string.test_ok, Toast.LENGTH_SHORT).show();
                     } else {
-                        Toast.makeText(MainActivity.this,
+                        Toast.makeText(this,
                                 getString(R.string.test_fail, describeCode(code)),
                                 Toast.LENGTH_LONG).show();
                     }
@@ -197,8 +202,34 @@ public class MainActivity extends Activity {
             });
         });
 
+        askNotificationPermission();
         updateWifiHeader();
-        refreshList();
+        refreshAll();
+        // 重新排程循环同步（覆盖升级、清数据、系统取消 Job 等场景）
+        Scheduler.reschedule(this);
+        maybeAutoSyncOnLaunch();
+    }
+
+    /** 启动软件时自动同步：执行全部「未暂停且已过冷却」的任务，串行执行。 */
+    private void maybeAutoSyncOnLaunch() {
+        if (autoLaunched) return;
+        autoLaunched = true;
+        if (Prefs.server(this).isEmpty()) return;
+        if (engine.tasks().isEmpty()) return;
+
+        int n = engine.syncAuto();
+        if (n > 0) {
+            Toast.makeText(this, getString(R.string.toast_launch_sync, n), Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, R.string.toast_launch_sync_none, Toast.LENGTH_SHORT).show();
+        }
+        refreshAll();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        engine.addListener(engineListener);
     }
 
     @Override
@@ -206,30 +237,31 @@ public class MainActivity extends Activity {
         super.onResume();
         registerReceiver(netReceiver, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
         updateWifiHeader();
-        boolean pending;
-        synchronized (queue) {
-            pending = !queue.isEmpty();
+        refreshAll();
+
+        // 回到前台时，若队列里还有未完成的任务（例如之前非 WiFi 被挂起），继续推进
+        if (engine.pending() && NetUtil.isWifi(this)) {
+            engine.pumpNow();
         }
-        if (pending && NetUtil.isWifi(this)) pumpQueue();
     }
 
     @Override
-    protected void onPause() {
+    protected void onStop() {
+        engine.removeListener(engineListener);
         try {
             unregisterReceiver(netReceiver);
         } catch (Exception ignored) {
         }
-        super.onPause();
+        super.onStop();
     }
 
     @Override
     protected void onDestroy() {
-        syncExec.shutdownNow();
         miscExec.shutdownNow();
         super.onDestroy();
     }
 
-    // ==================== 界面切换 ====================
+    // ==================== 界面 ====================
 
     private void showTab(boolean tasksTab) {
         tabTasks.setBackgroundResource(tasksTab ? R.drawable.tab_active : R.drawable.tab_inactive);
@@ -249,6 +281,92 @@ public class MainActivity extends Activity {
             tvWifi.setText(R.string.wifi_any);
         } else {
             tvWifi.setText(wifi ? R.string.wifi_on : R.string.wifi_off);
+        }
+    }
+
+    private void setupCooldownSpinner() {
+        List<String> labels = new ArrayList<>();
+        for (int h : Prefs.COOLDOWN_OPTIONS) {
+            labels.add(getString(R.string.cooldown_unit, h));
+        }
+        ArrayAdapter<String> ad = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, labels);
+        ad.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spCooldown.setAdapter(ad);
+
+        int cur = Prefs.coolDownHours(this);
+        int idx = 0;
+        for (int i = 0; i < Prefs.COOLDOWN_OPTIONS.length; i++) {
+            if (Prefs.COOLDOWN_OPTIONS[i] == cur) {
+                idx = i;
+                break;
+            }
+        }
+        spCooldown.setSelection(idx);
+    }
+
+    private int selectedCooldown() {
+        int i = spCooldown.getSelectedItemPosition();
+        if (i < 0 || i >= Prefs.COOLDOWN_OPTIONS.length) return Prefs.DEFAULT_COOLDOWN_HOURS;
+        return Prefs.COOLDOWN_OPTIONS[i];
+    }
+
+    private void askNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) return;
+        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFY);
+    }
+
+    // ==================== 刷新 ====================
+
+    private void onEngineChanged() {
+        refreshAll();
+    }
+
+    private void refreshAll() {
+        adapter.notifyDataSetChanged();
+        tvEmpty.setVisibility(engine.tasks().isEmpty() ? View.VISIBLE : View.GONE);
+
+        // 整体状态
+        Task running = null;
+        boolean waiting = false;
+        for (Task t : engine.tasks()) {
+            if (t.status == Task.RUNNING && running == null) running = t;
+            if (t.status == Task.WAITING_WIFI) waiting = true;
+        }
+        if (running != null) {
+            String txt = getString(R.string.status_syncing, running.name,
+                    running.uploaded + running.skipped, running.total);
+            int queued = engine.pendingCount();
+            if (queued > 0) txt += getString(R.string.status_queue, queued);
+            tvOverall.setText(txt);
+            if (running.total > 0) {
+                pbOverall.setProgress(Math.min(100,
+                        (running.uploaded + running.skipped) * 100 / running.total));
+            }
+        } else if (waiting || engine.pending()) {
+            tvOverall.setText(R.string.status_waiting_wifi);
+            pbOverall.setProgress(0);
+        } else {
+            tvOverall.setText(R.string.status_idle);
+            pbOverall.setProgress(0);
+        }
+
+        // 配置页「下次自动同步」
+        if (tvNextSync != null) {
+            if (!Prefs.autoRepeat(this)) {
+                tvNextSync.setText(R.string.next_sync_off);
+            } else {
+                long at = Scheduler.nextSyncAt(this);
+                if (at <= 0) {
+                    tvNextSync.setText(R.string.next_sync_none);
+                } else if (at <= System.currentTimeMillis() + 60000L) {
+                    tvNextSync.setText(R.string.next_sync_soon);
+                } else {
+                    tvNextSync.setText(getString(R.string.next_sync, formatTime(at)));
+                }
+            }
         }
     }
 
@@ -305,15 +423,15 @@ public class MainActivity extends Activity {
                     }
                     String remote = etRemote.getText().toString().trim();
                     if (editing == null) {
-                        tasks.add(new Task(name, picked[0], remote));
+                        engine.add(new Task(name, picked[0], remote));
                         Toast.makeText(this, R.string.toast_task_added, Toast.LENGTH_SHORT).show();
                     } else {
                         editing.name = name;
                         editing.treeUri = picked[0];
                         editing.remotePath = remote;
                     }
-                    persist();
-                    refreshList();
+                    engine.onTaskMutated();
+                    refreshAll();
                     dialog.dismiss();
                 }));
 
@@ -343,17 +461,12 @@ public class MainActivity extends Activity {
                 .setMessage(getString(R.string.confirm_delete, t.name))
                 .setNegativeButton(R.string.btn_cancel, null)
                 .setPositiveButton(R.string.btn_delete, (d, w) -> {
-                    synchronized (queue) {
-                        queue.remove(t.id);
-                    }
-                    tasks.remove(t);
-                    persist();
-                    refreshList();
+                    engine.remove(t);
+                    Scheduler.reschedule(this);
+                    refreshAll();
                 })
                 .show();
     }
-
-    // ==================== 同步调度 ====================
 
     private boolean checkReady() {
         if (Prefs.server(this).isEmpty()) {
@@ -362,248 +475,6 @@ public class MainActivity extends Activity {
             return false;
         }
         return true;
-    }
-
-    private void enqueue(Task t) {
-        synchronized (queue) {
-            if (!queue.contains(t.id)) queue.add(t.id);
-        }
-        pumpQueue();
-    }
-
-    private void pumpQueue() {
-        boolean pending;
-        synchronized (queue) {
-            pending = !queue.isEmpty();
-        }
-        if (!pending) return;
-
-        if (!Prefs.wifiOnly(this) || NetUtil.isWifi(this)) {
-            if (workerBusy.compareAndSet(false, true)) {
-                try {
-                    syncExec.execute(this::runQueue);
-                } catch (Exception e) {
-                    workerBusy.set(false);
-                }
-            }
-        } else {
-            for (Task t : tasks) {
-                if (t.status != Task.RUNNING && queueSnapshot().contains(t.id)) {
-                    t.status = Task.WAITING_WIFI;
-                }
-            }
-            refreshList();
-            tvOverall.setText(R.string.status_waiting_wifi);
-        }
-    }
-
-    private List<String> queueSnapshot() {
-        synchronized (queue) {
-            return new ArrayList<>(queue);
-        }
-    }
-
-    private Task findTask(String id) {
-        for (Task t : tasks) {
-            if (t.id.equals(id)) return t;
-        }
-        return null;
-    }
-
-    private void runQueue() {
-        int up = 0, skip = 0;
-        boolean err = false, waiting = false;
-
-        try {
-            while (true) {
-                String id;
-                synchronized (queue) {
-                    if (queue.isEmpty()) break;
-                    id = queue.get(0);
-                }
-                Task t = findTask(id);
-                if (t == null || !t.enabled) {
-                    synchronized (queue) {
-                        queue.remove(id);
-                    }
-                    continue;
-                }
-                if (Prefs.wifiOnly(this) && !NetUtil.isWifi(this)) {
-                    waiting = true;
-                    t.status = Task.WAITING_WIFI;
-                    ui.post(this::refreshList);
-                    break;
-                }
-
-                Result r = syncOne(t);
-                if (r == null) {
-                    waiting = true;
-                    break;
-                }
-                up += r.uploaded;
-                skip += r.skipped;
-                err |= r.failed;
-                synchronized (queue) {
-                    if (!queue.isEmpty() && id.equals(queue.get(0))) queue.remove(0);
-                }
-            }
-        } finally {
-            workerBusy.set(false);
-            final int fu = up, fs = skip;
-            final boolean fe = err, fw = waiting;
-            ui.post(() -> {
-                boolean pending;
-                synchronized (queue) {
-                    pending = !queue.isEmpty();
-                }
-                refreshList();
-                if (fw || pending) {
-                    tvOverall.setText(R.string.status_waiting_wifi);
-                    pbOverall.setProgress(0);
-                } else if (fe) {
-                    tvOverall.setText(getString(R.string.status_all_done_part, fu, fs));
-                    pbOverall.setProgress(100);
-                } else {
-                    tvOverall.setText(getString(R.string.status_all_done, fu, fs));
-                    pbOverall.setProgress(100);
-                }
-            });
-        }
-    }
-
-    /** 同步单个任务（后台线程）。返回 null 表示中途因失去 WiFi 而中止。 */
-    private Result syncOne(Task t) {
-        final String server = Prefs.server(this);
-        final String user = Prefs.user(this);
-        final String pass = Prefs.pass(this);
-        final boolean insecure = Prefs.insecure(this);
-
-        t.status = Task.RUNNING;
-        t.uploaded = 0;
-        t.skipped = 0;
-        t.total = 0;
-        t.currentPct = 0;
-        t.currentFile = "";
-        t.errorMessage = "";
-        ui.post(() -> {
-            tvOverall.setText(R.string.status_preparing);
-            pbOverall.setProgress(0);
-            refreshList();
-        });
-
-        Uri tree;
-        try {
-            tree = Uri.parse(t.treeUri);
-        } catch (Exception e) {
-            return fail(t, "本地目录地址无效");
-        }
-        if (!hasUriPermission(tree)) {
-            return fail(t, "目录授权已失效，请编辑任务重新选择目录");
-        }
-
-        List<DocsTree.Entry> files;
-        try {
-            files = DocsTree.walk(this, tree);
-        } catch (Exception e) {
-            return fail(t, "读取目录失败：" + e.getMessage());
-        }
-        t.total = files.size();
-        if (files.isEmpty()) {
-            t.status = Task.DONE;
-            t.lastSync = System.currentTimeMillis();
-            t.lastResult = getString(R.string.task_empty_dir);
-            persist();
-            return new Result(0, 0, false);
-        }
-
-        for (DocsTree.Entry e : files) {
-            if (Prefs.wifiOnly(this) && !NetUtil.isWifi(this)) {
-                t.status = Task.WAITING_WIFI;
-                return null;
-            }
-            t.currentFile = e.relPath();
-            t.currentPct = 0;
-            ui.post(() -> {
-                tvOverall.setText(getString(R.string.status_syncing, t.name,
-                        t.uploaded + t.skipped, t.total));
-                if (t.total > 0) {
-                    pbOverall.setProgress(Math.min(100,
-                            (t.uploaded + t.skipped) * 100 / t.total));
-                }
-                refreshList();
-            });
-
-            try {
-                String url = WebDavClient.buildPutUrlPath(server, t.remotePath, e.relPath());
-
-                // 单向上传的增量判断：远端已存在且大小一致则跳过
-                if (e.size > 0) {
-                    long remote = WebDavClient.headSize(url, user, pass, insecure);
-                    if (remote == e.size) {
-                        t.skipped++;
-                        continue;
-                    }
-                }
-
-                WebDavClient.ensureParentDirs(url, user, pass, insecure);
-
-                try (InputStream in = DocsTree.open(this, tree, e.docId)) {
-                    if (in == null) throw new IOException("无法打开文件");
-                    final long[] lastPost = {0};
-                    int code = WebDavClient.putFile(url, in, e.size, user, pass, insecure, sent -> {
-                        if (e.size > 0) {
-                            t.currentPct = (int) (sent * 100 / e.size);
-                        }
-                        long now = System.currentTimeMillis();
-                        if (now - lastPost[0] >= 300) {
-                            lastPost[0] = now;
-                            ui.post(MainActivity.this::refreshList);
-                        }
-                    });
-                    if (code < 200 || code >= 300) {
-                        throw new IOException("HTTP " + code);
-                    }
-                }
-                t.uploaded++;
-                t.currentPct = 100;
-                ui.post(this::refreshList);
-            } catch (Exception ex) {
-                String msg = ex.getMessage();
-                return fail(t, (msg == null || msg.isEmpty()) ? ex.toString() : msg);
-            }
-        }
-
-        t.status = Task.DONE;
-        t.lastSync = System.currentTimeMillis();
-        t.lastResult = getString(R.string.task_done, t.uploaded, t.skipped);
-        persist();
-        return new Result(t.uploaded, t.skipped, false);
-    }
-
-    private Result fail(Task t, String msg) {
-        t.status = Task.ERROR;
-        t.errorMessage = msg;
-        persist();
-        return new Result(t.uploaded, t.skipped, true);
-    }
-
-    private boolean hasUriPermission(Uri u) {
-        try {
-            for (UriPermission p : getContentResolver().getPersistedUriPermissions()) {
-                if (p.getUri().equals(u)) return true;
-            }
-        } catch (Exception ignored) {
-        }
-        return false;
-    }
-
-    private void persist() {
-        Prefs.saveTasks(this, tasks);
-    }
-
-    private void refreshList() {
-        adapter.notifyDataSetChanged();
-        tvEmpty.setVisibility(tasks.isEmpty() ? View.VISIBLE : View.GONE);
     }
 
     // ==================== 工具 ====================
@@ -657,12 +528,12 @@ public class MainActivity extends Activity {
 
         @Override
         public int getCount() {
-            return tasks.size();
+            return engine.tasks().size();
         }
 
         @Override
         public Object getItem(int position) {
-            return tasks.get(position);
+            return engine.tasks().get(position);
         }
 
         @Override
@@ -676,7 +547,7 @@ public class MainActivity extends Activity {
             if (v == null) {
                 v = inflater.inflate(R.layout.item_task, parent, false);
             }
-            final Task t = tasks.get(position);
+            final Task t = engine.tasks().get(position);
 
             TextView tvName = v.findViewById(R.id.tvName);
             Switch swEnabled = v.findViewById(R.id.swEnabled);
@@ -684,8 +555,11 @@ public class MainActivity extends Activity {
             TextView tvRemote = v.findViewById(R.id.tvRemote);
             TextView tvStatus = v.findViewById(R.id.tvStatus);
             ProgressBar pbTask = v.findViewById(R.id.pbTask);
+            TextView tvNext = v.findViewById(R.id.tvNext);
             TextView tvTime = v.findViewById(R.id.tvTime);
+            CheckBox cbRepeat = v.findViewById(R.id.cbRepeat);
             Button btnSyncOne = v.findViewById(R.id.btnSyncOne);
+            Button btnPause = v.findViewById(R.id.btnPause);
             Button btnDelete = v.findViewById(R.id.btnDelete);
 
             tvName.setText(t.name);
@@ -705,24 +579,24 @@ public class MainActivity extends Activity {
             swEnabled.setChecked(t.enabled);
             swEnabled.setOnCheckedChangeListener((btn, checked) -> {
                 t.enabled = checked;
-                persist();
-                if (!checked) {
-                    synchronized (queue) {
-                        queue.remove(t.id);
-                    }
-                }
-                refreshList();
+                engine.onTaskMutated();
+                refreshAll();
+            });
+
+            cbRepeat.setOnCheckedChangeListener(null);
+            cbRepeat.setChecked(t.repeat);
+            cbRepeat.setOnCheckedChangeListener((btn, checked) -> {
+                t.repeat = checked;
+                engine.onTaskMutated();
+                refreshAll();
             });
 
             int statusColor = R.color.text_secondary;
             switch (t.status) {
                 case Task.RUNNING:
                     pbTask.setVisibility(View.VISIBLE);
-                    if (t.total > 0) {
-                        pbTask.setProgress(Math.min(100, (t.uploaded + t.skipped) * 100 / t.total));
-                    } else {
-                        pbTask.setProgress(0);
-                    }
+                    pbTask.setProgress(t.total > 0
+                            ? Math.min(100, (t.uploaded + t.skipped) * 100 / t.total) : 0);
                     tvStatus.setText(t.currentFile.isEmpty()
                             ? getString(R.string.status_preparing)
                             : getString(R.string.task_uploading, t.currentFile));
@@ -752,7 +626,24 @@ public class MainActivity extends Activity {
                     statusColor = R.color.text_secondary;
                     break;
             }
+            if (t.paused && t.status != Task.RUNNING) {
+                tvStatus.setText(R.string.task_paused);
+                statusColor = R.color.warning;
+                pbTask.setVisibility(View.GONE);
+            }
             tvStatus.setTextColor(getResources().getColor(statusColor));
+
+            // 下次自动同步时间
+            if (t.paused || !Prefs.autoRepeat(MainActivity.this) || !t.repeat || !t.enabled) {
+                tvNext.setText(R.string.next_sync_off);
+            } else {
+                long at = t.nextSyncAt(Prefs.coolDownMillis(MainActivity.this));
+                if (at <= System.currentTimeMillis()) {
+                    tvNext.setText(R.string.next_sync_soon);
+                } else {
+                    tvNext.setText(getString(R.string.next_sync, formatTime(at)));
+                }
+            }
 
             String time = formatTime(t.lastSync);
             tvTime.setText(time.isEmpty()
@@ -766,24 +657,25 @@ public class MainActivity extends Activity {
                             Toast.LENGTH_SHORT).show();
                     return;
                 }
-                enqueue(t);
-                refreshList();
+                engine.enqueue(t);
+                refreshAll();
             });
+
+            btnPause.setText(t.paused ? R.string.btn_resume : R.string.btn_pause);
+            btnPause.setTextColor(getResources().getColor(
+                    t.paused ? R.color.primary : R.color.text_secondary));
+            btnPause.setOnClickListener(btn -> {
+                engine.setPaused(t, !t.paused);
+                Toast.makeText(MainActivity.this,
+                        t.paused ? getString(R.string.toast_paused, t.name)
+                                 : getString(R.string.toast_resumed, t.name),
+                        Toast.LENGTH_SHORT).show();
+                refreshAll();
+            });
+
             btnDelete.setOnClickListener(btn -> confirmDelete(t));
 
             return v;
-        }
-    }
-
-    private static class Result {
-        final int uploaded;
-        final int skipped;
-        final boolean failed;
-
-        Result(int uploaded, int skipped, boolean failed) {
-            this.uploaded = uploaded;
-            this.skipped = skipped;
-            this.failed = failed;
         }
     }
 }

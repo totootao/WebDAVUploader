@@ -20,10 +20,20 @@ jobs:
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.1.1' }}
-          name: WebDAV 同步 ${{ github.ref_type == 'tag' && github.ref_name || 'v1.1.1' }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.2.0' }}
+          name: WebDAV 同步 ${{ github.ref_type == 'tag' && github.ref_name || 'v1.2.0' }}
           body: |
             把手机目录单向上传（同步）到 WebDAV 服务器的 Android 工具。
+
+            ## v1.2.0 新增
+            - **启动自动同步**：打开软件即同步全部「未暂停 + 已过冷却」的任务
+            - **同一时间只同步一个任务**，其余排队依次执行
+            - **循环同步**：任务完成后进入冷却（默认 1 天），冷却结束自动再同步一次；
+              冷却时长可选 6 / 12 / 24 / 48 小时，也可随时手动触发
+            - **单任务暂停**：暂停后启动同步、循环同步、全部同步都会跳过它，
+              仍可单独手动同步一次，点「继续」恢复
+            - 同步引擎从界面剥离，后台循环由系统 JobScheduler 调度（无需常驻服务，
+              重启后保留排程）；新增同步通知与下次同步时间显示
 
             ## 功能
             - 「任务 / 配置」双标签页；登录信息集中在配置页，支持测试连接
@@ -33,7 +43,7 @@ jobs:
             - 增量跳过：远端已存在且大小一致的文件自动跳过
             - 通过系统目录选择器授权，无需存储权限
 
-            ## v1.1.1 修复
+            ## 历史修复
             - 修复 Android 9+ 上「Expected one of [OPTIONS, GET, ...] but was MKCOL」
               导致目录创建失败、任务同步报错的问题：
               MKCOL / PROPFIND 改为原生 Socket 通道实现，

@@ -22,6 +22,8 @@
     <string name="status_preparing">正在扫描本地文件…</string>
     <string name="status_all_done">同步完成：上传 %1$d 个，跳过 %2$d 个</string>
     <string name="status_all_done_part">同步结束（有任务失败）：上传 %1$d 个，跳过 %2$d 个</string>
+    <string name="status_queue">，另有 %1$d 个任务排队（同一时间只同步一个）</string>
+    <string name="toast_all_paused">所有任务都已暂停，请先点「继续」</string>
     <string name="status_waiting_wifi">等待 WiFi 连接…</string>
 
     <!-- 任务项 -->
@@ -37,6 +39,13 @@
     <string name="task_waiting_wifi">等待 WiFi</string>
     <string name="task_empty_dir">本地目录为空或无法访问</string>
     <string name="btn_sync">同步</string>
+    <string name="btn_pause">暂停</string>
+    <string name="btn_resume">继续</string>
+    <string name="task_paused">已暂停（自动同步会跳过）</string>
+    <string name="toast_paused">已暂停：%1$s</string>
+    <string name="toast_resumed">已继续：%1$s</string>
+    <string name="toast_launch_sync">启动自动同步：%1$d 个任务</string>
+    <string name="toast_launch_sync_none">任务都在冷却中或已暂停，本次启动未自动同步</string>
     <string name="btn_delete">删除</string>
     <string name="btn_cancel">取消</string>
 
@@ -64,6 +73,20 @@
     <string name="config_sync_title">同步设置</string>
     <string name="sw_wifi_only">仅在 WiFi 下同步</string>
     <string name="wifi_only_hint">开启后，移动数据 / 其他网络下不会上传任何文件，任务会等待 WiFi</string>
+    <!-- 循环同步 -->
+    <string name="sw_auto_repeat">循环同步（冷却结束后自动再次同步）</string>
+    <string name="auto_repeat_hint">任务全部同步完成后开始冷却，冷却结束时自动再同步一次；随时可手动点「同步」立即执行</string>
+    <string name="label_cooldown">冷却时间</string>
+    <string name="cooldown_unit">%1$d 小时</string>
+    <string name="cb_repeat">循环</string>
+    <string name="next_sync">下次：%1$s</string>
+    <string name="next_sync_soon">待同步（冷却已结束）</string>
+    <string name="next_sync_off">未开启循环</string>
+    <string name="next_sync_none">暂无可自动同步的任务</string>
+    <string name="toast_auto_started">有任务已过冷却时间，开始自动同步</string>
+    <string name="notify_title">WebDAV 同步</string>
+    <string name="sync_canceled">同步已取消</string>
+
     <string name="btn_save">保存配置</string>
     <string name="btn_ok">保存</string>
     <string name="btn_testing">测试中…</string>
