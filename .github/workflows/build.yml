@@ -1,13 +1,12 @@
 name: Build WebDAV Uploader APK
 
+# 仅手动触发：编译 APK 并作为 workflow 产物上传（不创建 Release）。
+# Release 由 publish-release.yml 负责，它使用仓库内已编译好的 APK。
 on:
-  push:
-    branches: [ main ]
-    tags: [ 'v*' ]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -48,11 +47,3 @@ jobs:
         with:
           name: app-release-apk
           path: app/build/outputs/apk/release/app-release.apk
-
-      - name: Create GitHub Release (on tag)
-        if: success() && startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/build/outputs/apk/release/app-release.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
