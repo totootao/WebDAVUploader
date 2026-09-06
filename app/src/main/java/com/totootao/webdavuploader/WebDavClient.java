@@ -35,6 +35,14 @@ public class WebDavClient {
 
     /** 组合出最终 PUT 地址：server + remoteDir + fileName，并对各路径段做 URL 编码。 */
     public static String buildPutUrl(String server, String remoteDir, String fileName) {
+        return buildPutUrlPath(server, remoteDir, fileName);
+    }
+
+    /**
+     * 同 {@link #buildPutUrl}，但 relPath 允许包含子目录（如 "a/b/c.jpg"），
+     * 每一段都会单独做 URL 编码，"/" 作为层级分隔符保留。
+     */
+    public static String buildPutUrlPath(String server, String remoteDir, String relPath) {
         if (server == null) server = "";
         server = server.trim();
         if (!server.endsWith("/")) server += "/";
@@ -52,8 +60,101 @@ public class WebDavClient {
                 }
             }
         }
-        sb.append(encodeSegment(fileName));
+        if (relPath != null) {
+            for (String seg : relPath.split("/")) {
+                if (!seg.isEmpty()) {
+                    sb.append(encodeSegment(seg)).append("/");
+                }
+            }
+            // 去掉最后一个 "/"（若 relPath 非空）
+            int len = sb.length();
+            if (len > server.length() && sb.charAt(len - 1) == '/') {
+                sb.deleteCharAt(len - 1);
+            }
+        }
         return sb.toString();
+    }
+
+    /**
+     * 探测远程文件大小（HEAD）。返回 >=0 表示远端已存在且拿到长度；
+     * -1 表示不存在、不支持 HEAD 或长度未知（调用方应重新上传）。
+     */
+    public static long headSize(String fileUrl, String user, String pass, boolean insecure) {
+        try {
+            HttpURLConnection conn = openConnection(fileUrl, basicAuth(user, pass), insecure);
+            try {
+                conn.setRequestMethod("HEAD");
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(15000);
+                int code = conn.getResponseCode();
+                if (code < 200 || code >= 300) return -1;
+                String cl = conn.getHeaderField("Content-Length");
+                if (cl == null) return -1;
+                return Long.parseLong(cl.trim());
+            } finally {
+                conn.disconnect();
+            }
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /**
+     * 测试服务器连通性：优先 PROPFIND(Depth 0) 期望 207，失败回退 HEAD。
+     * 返回 HTTP 状态码（未知异常返回 -1）。
+     */
+    public static int probe(String server, String user, String pass, boolean insecure) {
+        String url = server == null ? "" : server.trim();
+        if (url.isEmpty()) return -1;
+        if (!url.endsWith("/")) url += "/";
+
+        // 1) PROPFIND（标准 WebDAV）
+        try {
+            HttpURLConnection conn = openConnection(url, basicAuth(user, pass), insecure);
+            try {
+                conn.setRequestMethod("PROPFIND");
+                conn.setRequestProperty("Depth", "0");
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(15000);
+                int code = conn.getResponseCode();
+                drain(conn);
+                if (code != 405 && code != 501) return code;
+            } finally {
+                conn.disconnect();
+            }
+        } catch (Exception ignored) {
+        }
+
+        // 2) 回退 HEAD
+        try {
+            HttpURLConnection conn = openConnection(url, basicAuth(user, pass), insecure);
+            try {
+                conn.setRequestMethod("HEAD");
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(15000);
+                int code = conn.getResponseCode();
+                drain(conn);
+                return code;
+            } finally {
+                conn.disconnect();
+            }
+        } catch (Exception ignored) {
+        }
+        return -1;
+    }
+
+    private static void drain(HttpURLConnection conn) {
+        try {
+            InputStream in = conn.getInputStream();
+            if (in != null) {
+                byte[] buf = new byte[4096];
+                while (in.read(buf) > 0) {
+                    // 丢弃
+                }
+                in.close();
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private static String encodeSegment(String seg) {

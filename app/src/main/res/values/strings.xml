@@ -1,19 +1,81 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">WebDAV 文件上传</string>
-    <string name="hint_server">WebDAV 地址（例如 https://dav.example.com/dav/）</string>
+    <string name="app_name">WebDAV 同步</string>
+
+    <!-- 顶部 -->
+    <string name="header_subtitle">目录单向上传 · 仅 WiFi 同步</string>
+    <string name="wifi_on">WiFi 已连接</string>
+    <string name="wifi_off">当前非 WiFi，同步已挂起</string>
+    <string name="wifi_any">已允许任意网络同步</string>
+
+    <!-- 标签页 -->
+    <string name="tab_tasks">任务</string>
+    <string name="tab_config">配置</string>
+
+    <!-- 任务页 -->
+    <string name="overall_title">同步状态</string>
+    <string name="btn_sync_all">全部同步</string>
+    <string name="btn_new_task">新建任务</string>
+    <string name="empty_tasks">还没有任务。点「新建任务」添加一个目录同步任务。</string>
+    <string name="status_idle">就绪</string>
+    <string name="status_syncing">正在同步 %1$s（%2$d/%3$d）</string>
+    <string name="status_preparing">正在扫描本地文件…</string>
+    <string name="status_all_done">同步完成：上传 %1$d 个，跳过 %2$d 个</string>
+    <string name="status_all_done_part">同步结束（有任务失败）：上传 %1$d 个，跳过 %2$d 个</string>
+    <string name="status_waiting_wifi">等待 WiFi 连接…</string>
+
+    <!-- 任务项 -->
+    <string name="task_local">本地：%1$s</string>
+    <string name="task_remote">远程：%1$s</string>
+    <string name="task_last_sync">上次同步：%1$s</string>
+    <string name="task_never">从未同步</string>
+    <string name="task_idle">待同步</string>
+    <string name="task_running">同步中 %1$d/%2$d</string>
+    <string name="task_uploading">正在上传：%1$s</string>
+    <string name="task_done">已完成：上传 %1$d，跳过 %2$d</string>
+    <string name="task_error">失败：%1$s</string>
+    <string name="task_waiting_wifi">等待 WiFi</string>
+    <string name="task_empty_dir">本地目录为空或无法访问</string>
+    <string name="btn_sync">同步</string>
+    <string name="btn_delete">删除</string>
+    <string name="btn_cancel">取消</string>
+
+    <!-- 任务对话框 -->
+    <string name="dialog_new_task">新建任务</string>
+    <string name="dialog_edit_task">编辑任务</string>
+    <string name="label_task_name">任务名称</string>
+    <string name="hint_task_name">例如：相册备份</string>
+    <string name="label_local_dir">本地目录</string>
+    <string name="btn_pick_dir">选择本地目录</string>
+    <string name="label_remote_path">远程目录</string>
+    <string name="hint_remote_path">例如 /backup/photos，留空表示根目录</string>
+    <string name="no_dir_selected">未选择目录</string>
+    <string name="toast_need_dir">请先选择本地目录</string>
+    <string name="toast_need_name">请填写任务名称</string>
+    <string name="toast_task_added">任务已添加</string>
+
+    <!-- 配置页 -->
+    <string name="config_login_title">WebDAV 登录</string>
+    <string name="hint_server">服务器地址（https://dav.example.com/dav/）</string>
     <string name="hint_user">用户名</string>
     <string name="hint_pass">密码</string>
-    <string name="hint_remote">远程目录（默认 / ，可留空）</string>
+    <string name="cb_insecure">忽略 SSL 证书（自签名服务器）</string>
+    <string name="btn_test">测试连接</string>
+    <string name="config_sync_title">同步设置</string>
+    <string name="sw_wifi_only">仅在 WiFi 下同步</string>
+    <string name="wifi_only_hint">开启后，移动数据 / 其他网络下不会上传任何文件，任务会等待 WiFi</string>
     <string name="btn_save">保存配置</string>
-    <string name="btn_pick">选择文件并上传</string>
-    <string name="cb_insecure">忽略 SSL 证书（自签名/测试服务器）</string>
+    <string name="btn_ok">保存</string>
+    <string name="btn_testing">测试中…</string>
     <string name="toast_saved">配置已保存</string>
-    <string name="toast_fill">请先填写 WebDAV 地址</string>
-    <string name="toast_no_file">未选择文件</string>
-    <string name="status_idle">就绪</string>
-    <string name="status_uploading">上传中：%1$s  (%2$d/%3$d)</string>
-    <string name="status_done">完成：%1$s</string>
-    <string name="status_error">失败：%1$s  %2$s</string>
-    <string name="status_prepare">正在准备上传…</string>
+    <string name="toast_fill_server">请先填写 WebDAV 地址</string>
+    <string name="toast_no_enabled_task">没有可同步的任务，请新建任务或打开任务开关</string>
+    <string name="toast_task_disabled">任务已关闭，请先打开右侧开关</string>
+    <string name="toast_no_picker">系统不支持目录选择器</string>
+    <string name="test_ok">连接成功</string>
+    <string name="test_fail">连接失败：%1$s</string>
+    <string name="test_no_config">请先填写服务器地址</string>
+
+    <!-- 通用 -->
+    <string name="confirm_delete">删除任务「%1$s」？仅移除同步配置，不会删除本地或远程文件。</string>
 </resources>
