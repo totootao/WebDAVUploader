@@ -30,14 +30,11 @@ jobs:
       - name: Install SDK packages
         run: yes | sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
       - name: Build release APK
         run: ./gradlew assembleRelease --stacktrace
-
-      - name: Report build error
-        if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "ci-log-$(date +%s)" --notes-file ci-build.log --title "CI build log"
 
       - name: Upload APK artifact
         if: success()
