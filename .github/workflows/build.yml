@@ -35,15 +35,9 @@ jobs:
 
       - name: Report build error
         if: failure()
-        run: |
-          mkdir -p ci-log
-          cp ci-build.log ci-log/build.log
-          git config user.email "totootao@qq.com"
-          git config user.name "totootao"
-          git checkout -B ci-diag
-          git add ci-log/build.log
-          git commit -m "ci: build log" 
-          git push origin ci-diag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "ci-log-$(date +%s)" --notes-file ci-build.log --title "CI build log"
 
       - name: Upload APK artifact
         if: success()
