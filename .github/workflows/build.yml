@@ -34,7 +34,14 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew assembleRelease --stacktrace 2>&1 | tee ci-build.log
+
+      - name: Emit build errors as annotations
+        if: failure()
+        run: |
+          tail -n 80 ci-build.log | tr -d '\r' | while IFS= read -r line; do
+            echo "::error::$line"
+          done
 
       - name: Upload APK artifact
         if: success()
