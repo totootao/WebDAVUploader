@@ -36,7 +36,7 @@ jobs:
       - name: Build release APK
         run: |
           for i in 1 2 3; do
-            ./gradlew assembleRelease --stacktrace --no-daemon && break
+            ./gradlew assembleRelease --stacktrace 2>&1 | tee ci-build.log && break
             echo "attempt $i failed, retrying..."
             sleep 15
           done
