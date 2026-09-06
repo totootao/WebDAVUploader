@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WebDAV 文件上传</string>
+    <string name="hint_server">WebDAV 地址（例如 https://dav.example.com/dav/）</string>
+    <string name="hint_user">用户名</string>
+    <string name="hint_pass">密码</string>
+    <string name="hint_remote">远程目录（默认 / ，可留空）</string>
+    <string name="btn_save">保存配置</string>
+    <string name="btn_pick">选择文件并上传</string>
+    <string name="cb_insecure">忽略 SSL 证书（自签名/测试服务器）</string>
+    <string name="toast_saved">配置已保存</string>
+    <string name="toast_fill">请先填写 WebDAV 地址</string>
+    <string name="toast_no_file">未选择文件</string>
+    <string name="status_idle">就绪</string>
+    <string name="status_uploading">上传中：%1$s  (%2$d/%3$d)</string>
+    <string name="status_done">完成：%1$s</string>
+    <string name="status_error">失败：%1$s  %2$s</string>
+    <string name="status_prepare">正在准备上传…</string>
+</resources>

@@ -1,0 +1,28 @@
+pluginManagement {
+    repositories {
+        def mirror = System.getenv('ANDROID_BUILD_MIRROR')
+        if (mirror != null && !mirror.isEmpty()) {
+            maven { url mirror }
+        } else {
+            google()
+            mavenCentral()
+            gradlePluginPortal()
+        }
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        def mirror = System.getenv('ANDROID_BUILD_MIRROR')
+        if (mirror != null && !mirror.isEmpty()) {
+            maven { url mirror }
+        } else {
+            google()
+            mavenCentral()
+        }
+    }
+}
+
+rootProject.name = 'WebDAVUploader'
+include ':app'
