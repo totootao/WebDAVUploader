@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
 
 jobs:
   build:
@@ -32,17 +31,13 @@ jobs:
         run: yes | sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace 2>&1 | tee ci-build.log
+        run: ./gradlew assembleRelease --stacktrace
 
       - name: Report build error
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          BODY=$(tail -c 3500 ci-build.log | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
-          curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/totootao/WebDAVUploader/issues \
-            -d "{\"title\":\"CI build failure $(date +%s)\",\"body\":$BODY}" || true
+        run: gh issue create --title "CI build failure $(date +%s)" --body-file ci-build.log || true
 
       - name: Upload APK artifact
         if: success()
