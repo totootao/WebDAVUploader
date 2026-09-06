@@ -20,37 +20,34 @@ jobs:
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.1.0' }}
-          name: WebDAV 同步 v1.1.0
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.1.1' }}
+          name: WebDAV 同步 ${{ github.ref_type == 'tag' && github.ref_name || 'v1.1.1' }}
           body: |
             把手机目录单向上传（同步）到 WebDAV 服务器的 Android 工具。
 
-            ## v1.1.0 更新
-            - **全新界面**：分为「任务」与「配置」两个标签页
-            - **登录移入配置页**：服务器地址、用户名、密码、SSL 选项集中管理，支持「测试连接」
-            - **目录同步（单向上传）**：选择本地目录，整目录（含子目录）上传，不下载、不删除远端
-            - **多任务**：可添加任意多个同步任务，每个任务独立开关、独立进度、可单独同步
-            - **仅 WiFi 同步**：默认开启；非 WiFi 时任务自动挂起等待，连上 WiFi 后自动续传
-            - **增量跳过**：远端已存在且大小一致的文件自动跳过，不重复上传
-            - 新增应用图标
-
             ## 功能
-            - 通过系统目录选择器（SAF）授权，无需任何存储权限
-            - 自动创建远程目录（MKCOL），文件以 PUT 上传，支持 Basic 认证
-            - 任务卡片可查看：本地目录、远程目录、同步进度、上次同步时间与结果
-            - 可选「忽略 SSL 证书」以连接自签名/测试服务器
-            - 纯标准库实现（HttpURLConnection），不依赖任何第三方库
+            - 「任务 / 配置」双标签页；登录信息集中在配置页，支持测试连接
+            - 目录同步（单向上传）：递归上传整个目录含子目录，不下载、不删除远端
+            - 多任务：独立开关、独立进度、单独同步 / 全部同步
+            - 仅 WiFi 同步：非 WiFi 自动挂起，连上 WiFi 自动续传
+            - 增量跳过：远端已存在且大小一致的文件自动跳过
+            - 通过系统目录选择器授权，无需存储权限
+
+            ## v1.1.1 修复
+            - 修复 Android 9+ 上「Expected one of [OPTIONS, GET, ...] but was MKCOL」
+              导致目录创建失败、任务同步报错的问题：
+              MKCOL / PROPFIND 改为原生 Socket 通道实现，
+              不再受 HttpURLConnection 的方法白名单限制。
 
             ## 安装
-            下载下方 `WebDAVUploader-v1.1.0.apk`，允许「未知来源」后安装即可。
+            下载下方 APK，允许「未知来源」后安装即可。
             要求 Android 7.0（API 24）及以上。
 
             ## 技术信息
             - 包名：`com.totootao.webdavuploader`
-            - 版本：1.1.0（versionCode 2）
             - minSdk 24 / targetSdk 34，compileSdk 34
             - 已使用 APK Signature Scheme v2 签名
-          files: WebDAVUploader-v1.1.0.apk
+          files: WebDAVUploader-*.apk
           draft: false
           prerelease: false
         env:

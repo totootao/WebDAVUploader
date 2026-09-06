@@ -28,9 +28,16 @@
 
 仓库根目录包含编译并签名好的安装包：
 
-- `WebDAVUploader-v1.1.0.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
-- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.1.0.apk
+- `WebDAVUploader-v1.1.1.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
+- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.1.1.apk
 - 或到 [Releases](https://github.com/totootao/WebDAVUploader/releases) 页面下载
+
+## 更新记录
+
+- **v1.1.1**：修复 Android 上 `HttpURLConnection` 方法白名单导致 MKCOL/PROPFIND
+  报错（"Expected one of [OPTIONS, GET, …] but was MKCOL"）、目录无法创建的问题；
+  两者改为原生 Socket 通道实现。
+- **v1.1.0**：界面重构为「任务 / 配置」双标签页；新增目录单向上传、多任务、仅 WiFi 同步、增量跳过、应用图标。
 
 ## 使用
 

@@ -101,60 +101,30 @@ public class WebDavClient {
 
     /**
      * 测试服务器连通性：优先 PROPFIND(Depth 0) 期望 207，失败回退 HEAD。
+     * 两者都用 RawHttp（HttpURLConnection 不支持 PROPFIND）。
      * 返回 HTTP 状态码（未知异常返回 -1）。
      */
     public static int probe(String server, String user, String pass, boolean insecure) {
         String url = server == null ? "" : server.trim();
         if (url.isEmpty()) return -1;
         if (!url.endsWith("/")) url += "/";
+        String auth = basicAuth(user, pass);
 
         // 1) PROPFIND（标准 WebDAV）
         try {
-            HttpURLConnection conn = openConnection(url, basicAuth(user, pass), insecure);
-            try {
-                conn.setRequestMethod("PROPFIND");
-                conn.setRequestProperty("Depth", "0");
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(15000);
-                int code = conn.getResponseCode();
-                drain(conn);
-                if (code != 405 && code != 501) return code;
-            } finally {
-                conn.disconnect();
-            }
+            int code = RawHttp.request("PROPFIND", url, auth, insecure,
+                    "<D:propfind xmlns:D=\"DAV:\"><D:resourcetype/></D:propfind>"
+                            .getBytes(StandardCharsets.UTF_8));
+            if (code != 405 && code != 501) return code;
         } catch (Exception ignored) {
         }
 
         // 2) 回退 HEAD
         try {
-            HttpURLConnection conn = openConnection(url, basicAuth(user, pass), insecure);
-            try {
-                conn.setRequestMethod("HEAD");
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(15000);
-                int code = conn.getResponseCode();
-                drain(conn);
-                return code;
-            } finally {
-                conn.disconnect();
-            }
+            return RawHttp.request("HEAD", url, auth, insecure, null);
         } catch (Exception ignored) {
         }
         return -1;
-    }
-
-    private static void drain(HttpURLConnection conn) {
-        try {
-            InputStream in = conn.getInputStream();
-            if (in != null) {
-                byte[] buf = new byte[4096];
-                while (in.read(buf) > 0) {
-                    // 丢弃
-                }
-                in.close();
-            }
-        } catch (Exception ignored) {
-        }
     }
 
     private static String encodeSegment(String seg) {
@@ -203,22 +173,19 @@ public class WebDavClient {
         return true;
     }
 
-    private static void mkcol(String dirUrl, String auth, boolean insecure) throws IOException {
-        HttpURLConnection conn = openConnection(dirUrl, auth, insecure);
+    private static void mkcol(String dirUrl, String auth, boolean insecure) {
+        // Android 的 HttpURLConnection 不允许 MKCOL 方法（方法白名单限制），
+        // 必须走 RawHttp 原生 Socket 通道。
         try {
-            conn.setRequestMethod("MKCOL");
-            conn.setDoOutput(false);
-            conn.connect();
-            int code = conn.getResponseCode();
-            // 201 已创建；405/409 已存在；2xx 视为成功
-            if (code != HttpURLConnection.HTTP_CREATED
-                    && code != 405
-                    && code != 409
-                    && (code < 200 || code >= 300)) {
+            int code = RawHttp.request("MKCOL", dirUrl, auth, insecure, null);
+            // 201 已创建；405/409 已存在；2xx 视为成功；其余（如 301/403）忽略，
+            // 目录是否真正可用由后续 PUT 决定。
+            if (code < 200 || code >= 300) {
                 Log.d(TAG, "MKCOL " + dirUrl + " -> " + code + " (忽略)");
             }
-        } finally {
-            conn.disconnect();
+        } catch (Exception e) {
+            // 单层 MKCOL 失败不中断任务，让 PUT 最终判定
+            Log.d(TAG, "MKCOL " + dirUrl + " -> " + e.getMessage());
         }
     }
 
