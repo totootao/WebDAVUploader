@@ -1,0 +1,47 @@
+name: Publish APK Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: WebDAV Uploader v1.0.0
+          body: |
+            将手机文件上传到 WebDAV 的 Android 工具。
+
+            ## 功能
+            - 配置 WebDAV 地址/账号/密码/远程目录，配置本地持久化
+            - 通过系统文件选择器选取一个或多个文件，无需存储权限
+            - 自动创建远程目录（MKCOL），文件以 PUT 上传，支持 Basic 认证
+            - 上传进度实时显示，列表展示每个文件状态
+            - 可选「忽略 SSL 证书」以连接自签名/测试服务器
+            - 纯标准库实现，不依赖任何第三方网络库
+
+            ## 安装
+            下载下方 `WebDAVUploader-v1.0.0.apk`，允许「未知来源」后安装即可。
+            要求 Android 7.0（API 24）及以上。
+
+            ## 技术信息
+            - 包名：`com.totootao.webdavuploader`
+            - 版本：1.0（versionCode 1）
+            - minSdk 24 / targetSdk 34，compileSdk 34
+            - 已使用 APK Signature Scheme v2 签名
+          files: WebDAVUploader-v1.0.0.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
