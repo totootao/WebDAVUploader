@@ -33,17 +33,15 @@ jobs:
       - name: Build release APK
         run: ./gradlew assembleRelease --stacktrace 2>&1 | tee ci-build.log
 
-      - name: Publish build log on failure
+      - name: Report build error
         if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p ci-log
-          cp ci-build.log ci-log/build.log
-          git config user.email "totootao@qq.com"
-          git config user.name "totootao"
-          git checkout -B ci-diag
-          git add ci-log/build.log
-          git commit -m "ci: attach build log" || true
-          git push origin ci-diag || true
+          BODY=$(tail -c 3500 ci-build.log | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
+          curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/totootao/WebDAVUploader/issues \
+            -d "{\"title\":\"CI build failure $(date +%s)\",\"body\":$BODY}" || true
 
       - name: Upload APK artifact
         if: success()
