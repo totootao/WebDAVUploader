@@ -5,6 +5,7 @@ plugins {
 android {
     namespace 'com.totootao.webdavuploader'
     compileSdk 34
+    buildToolsVersion '34.0.0'
 
     defaultConfig {
         applicationId 'com.totootao.webdavuploader'
