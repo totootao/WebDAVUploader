@@ -35,9 +35,10 @@ jobs:
           cp ci-build.log ci-log/build.log
           git config user.email "totootao@qq.com"
           git config user.name "totootao"
+          git checkout -B ci-diag
           git add ci-log/build.log
           git commit -m "ci: attach build log" || true
-          git push || true
+          git push origin ci-diag || true
 
       - name: Upload APK artifact
         if: success()
