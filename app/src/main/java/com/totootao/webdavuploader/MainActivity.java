@@ -598,6 +598,7 @@ public class MainActivity extends Activity {
             TextView tvLocal = v.findViewById(R.id.tvLocal);
             TextView tvRemote = v.findViewById(R.id.tvRemote);
             TextView tvStatus = v.findViewById(R.id.tvStatus);
+            TextView tvCompare = v.findViewById(R.id.tvCompare);
             ProgressBar pbTask = v.findViewById(R.id.pbTask);
             TextView tvNext = v.findViewById(R.id.tvNext);
             TextView tvTime = v.findViewById(R.id.tvTime);
@@ -676,6 +677,14 @@ public class MainActivity extends Activity {
                 pbTask.setVisibility(View.GONE);
             }
             tvStatus.setTextColor(getResources().getColor(statusColor));
+
+            // 比对统计：开始同步或恢复同步、递交完目录后展示三项数字（仅同步中显示）
+            if (t.status == Task.RUNNING && t.localCount > 0) {
+                tvCompare.setVisibility(View.VISIBLE);
+                tvCompare.setText(getString(R.string.task_compare, t.localCount, t.remoteCount, t.toUpload));
+            } else {
+                tvCompare.setVisibility(View.GONE);
+            }
 
             // 下次自动同步时间
             if (t.paused || !Prefs.autoRepeat(MainActivity.this) || !t.repeat || !t.enabled) {

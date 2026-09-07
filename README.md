@@ -34,12 +34,15 @@
 
 仓库根目录包含编译并签名好的安装包：
 
-- `WebDAVUploader-v1.2.2.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
-- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.2.2.apk
+- `WebDAVUploader-v1.2.3.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
+- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.2.3.apk
 - 或到 [Releases](https://github.com/totootao/WebDAVUploader/releases) 页面下载
 
 ## 更新记录
 
+- **v1.2.3**：同步开始 / 恢复时展示比对统计
+  - 递交完目录后，立即显示三项数字：**当前目录文件数**、**WebDAV 文件数**、**待上传文件数**
+  - 同时出现在同步通知（比对完成时）与任务卡片（同步中）
 - **v1.2.2**：后台静默运行保活增强（面向红米 / 小米等激进后台管理机型）
   - 新增前台同步服务：真正承载上传长任务，常驻低优先级通知，防止厂商「神隐模式」在上传中途回收进程
   - 开机 / 升级 / 解锁后由 `BootReceiver` 自动重新排程循环同步（需用户在「自启动」白名单中允许本应用）

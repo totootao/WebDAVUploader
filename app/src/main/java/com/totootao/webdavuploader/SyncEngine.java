@@ -384,6 +384,21 @@ public class SyncEngine {
             }
         }
 
+        // 比对完成：统计本地 / 远端 / 待上传文件数，立即反馈给用户
+        // （开始同步或恢复同步时，递交完目录即可看到这三项数字）
+        int localCount = files.size();
+        int remoteCount = remote.size();
+        int toUpload = 0;
+        for (DocsTree.Entry e : files) {
+            Long rsize = remote.get(e.relPath());
+            if (rsize == null || e.size <= 0 || rsize != e.size) toUpload++;
+        }
+        t.localCount = localCount;
+        t.remoteCount = remoteCount;
+        t.toUpload = toUpload;
+        notifyChanged();
+        Notify.progress(app, app.getString(R.string.status_compare_done, localCount, remoteCount, toUpload));
+
         for (DocsTree.Entry e : files) {
             if (cancelRequested) {
                 t.status = Task.IDLE;

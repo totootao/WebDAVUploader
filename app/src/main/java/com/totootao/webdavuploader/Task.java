@@ -37,6 +37,11 @@ public class Task {
     public transient String currentFile = "";
     public transient String errorMessage = "";
 
+    /** 比对统计（不持久化）：本地文件数、远端文件数、待上传文件数 */
+    public transient int localCount = 0;
+    public transient int remoteCount = 0;
+    public transient int toUpload = 0;
+
     public Task(String name, String treeUri, String remotePath) {
         this.id = UUID.randomUUID().toString();
         this.name = name;
