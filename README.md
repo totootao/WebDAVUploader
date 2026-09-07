@@ -34,12 +34,16 @@
 
 仓库根目录包含编译并签名好的安装包：
 
-- `WebDAVUploader-v1.2.3.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
-- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.2.3.apk
+- `WebDAVUploader-v1.2.4.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
+- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.2.4.apk
 - 或到 [Releases](https://github.com/totootao/WebDAVUploader/releases) 页面下载
 
 ## 更新记录
 
+- **v1.2.4**：单文件上传失败不再中断任务
+  - 某个文件上传失败（网络/HTTP 错误等）时跳过该文件、继续传下一个，整个任务不停止
+  - 失败文件因远端没有完整副本，下一轮循环同步会自动重新比对并重试上传
+  - 同步结果统计新增「失败」计数：通知与任务卡片显示上传 / 跳过 / 失败数量
 - **v1.2.3**：同步开始 / 恢复时展示比对统计
   - 递交完目录后，立即显示三项数字：**当前目录文件数**、**WebDAV 文件数**、**待上传文件数**
   - 同时出现在同步通知（比对完成时）与任务卡片（同步中）

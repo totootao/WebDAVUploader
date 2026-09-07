@@ -251,7 +251,7 @@ public class SyncEngine {
     }
 
     private void runQueue() {
-        int up = 0, skip = 0;
+        int up = 0, skip = 0, fc = 0;
         boolean err = false, waiting = false, aborted = false;
         cancelRequested = false;
         Notify.progress(app, "正在同步…");
@@ -292,6 +292,7 @@ public class SyncEngine {
                 }
                 up += r.uploaded;
                 skip += r.skipped;
+                fc += r.failedCount;
                 err |= r.failed;
                 synchronized (queue) {
                     if (!queue.isEmpty() && id.equals(queue.get(0))) queue.remove(0);
@@ -310,7 +311,7 @@ public class SyncEngine {
             } else if (fw || pending) {
                 Notify.done(app, app.getString(R.string.status_waiting_wifi));
             } else if (fe) {
-                Notify.done(app, app.getString(R.string.status_all_done_part, fu, fs));
+                Notify.done(app, app.getString(R.string.status_all_done_part, fu, fs, fc));
             } else {
                 Notify.done(app, app.getString(R.string.status_all_done, fu, fs));
             }
@@ -331,6 +332,7 @@ public class SyncEngine {
         t.uploaded = 0;
         t.skipped = 0;
         t.total = 0;
+        t.failed = 0;
         t.currentPct = 0;
         t.currentFile = "";
         t.errorMessage = "";
@@ -445,13 +447,27 @@ public class SyncEngine {
                 t.currentPct = 100;
                 notifyChanged();
             } catch (Exception ex) {
-                String msg = ex.getMessage();
-                return fail(t, (msg == null || msg.isEmpty()) ? ex.toString() : msg);
+                // 单个文件上传失败：跳过该文件、继续传下一个，不中断整个任务；
+                // 失败文件因远端没有完整副本，下一轮循环同步时会重新比对并自动重试
+                String msg = (ex.getMessage() == null || ex.getMessage().isEmpty())
+                        ? ex.toString() : ex.getMessage();
+                t.failed++;
+                t.errorMessage = (t.errorMessage.isEmpty() ? "" : t.errorMessage + "\n")
+                        + app.getString(R.string.sync_fail_file, e.relPath(), msg);
+                Log.w(TAG, "文件上传失败，已跳过并继续：" + e.relPath() + " -> " + msg);
+                notifyChanged();
+                continue;
             }
         }
 
         t.status = Task.DONE;
         t.lastSync = System.currentTimeMillis();
+        if (t.failed > 0) {
+            t.lastResult = app.getString(R.string.task_done_part, t.uploaded, t.skipped, t.failed);
+            persist();
+            // 任务整体仍标记 DONE（不中断）；失败文件下一轮循环同步自动重试
+            return new Result(t.uploaded, t.skipped, true, false, t.failed);
+        }
         t.lastResult = app.getString(R.string.task_done, t.uploaded, t.skipped);
         persist();
         return new Result(t.uploaded, t.skipped, false);
@@ -486,16 +502,22 @@ public class SyncEngine {
         final int skipped;
         final boolean failed;
         final boolean aborted;
+        final int failedCount;
 
         Result(int uploaded, int skipped, boolean failed) {
-            this(uploaded, skipped, failed, false);
+            this(uploaded, skipped, failed, false, 0);
         }
 
         Result(int uploaded, int skipped, boolean failed, boolean aborted) {
+            this(uploaded, skipped, failed, aborted, 0);
+        }
+
+        Result(int uploaded, int skipped, boolean failed, boolean aborted, int failedCount) {
             this.uploaded = uploaded;
             this.skipped = skipped;
             this.failed = failed;
             this.aborted = aborted;
+            this.failedCount = failedCount;
         }
     }
 }

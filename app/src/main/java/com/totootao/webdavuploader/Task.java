@@ -41,6 +41,7 @@ public class Task {
     public transient int localCount = 0;
     public transient int remoteCount = 0;
     public transient int toUpload = 0;
+    public transient int failed = 0;
 
     public Task(String name, String treeUri, String remotePath) {
         this.id = UUID.randomUUID().toString();
