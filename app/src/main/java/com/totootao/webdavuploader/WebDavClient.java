@@ -2,12 +2,12 @@ package com.totootao.webdavuploader;
 
 import android.util.Log;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -15,6 +15,7 @@ import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -151,8 +152,18 @@ public class WebDavClient {
 
     /**
      * 确保文件 URL 的所有父级目录存在（逐层 MKCOL，已存在则忽略）。
+     * <p>
+     * 注意：不能依赖 {@code String.split("/")} 末尾空串来做边界判断——Java 的 split
+     * 会丢弃末尾空字符串（"/a/b/".split("/") 得到 ["", "a", "b"]），此前按
+     * {@code i < segs.length - 1} 遍历会导致：单层目录一次 MKCOL 都不发、
+     * 多层目录漏建最深一层，最终 PUT 全部 409（远端永远为空 → 每轮重复上传）。
+     * 这里改为遍历所有非空路径段。
+     *
+     * @param created 已确认创建过的目录 URL 集合（可为 null）。传入同一个集合可让
+     *                同一轮同步内每个目录只 MKCOL 一次，显著减少请求数。
      */
-    public static boolean ensureParentDirs(String fileUrl, String user, String pass, boolean insecure)
+    public static boolean ensureParentDirs(String fileUrl, Set<String> created,
+                                           String user, String pass, boolean insecure)
             throws IOException {
         String auth = basicAuth(user, pass);
         // 取文件 URL 的父目录
@@ -170,12 +181,22 @@ public class WebDavClient {
 
         String[] segs = path.split("/");
         StringBuilder cur = new StringBuilder(base);
-        // segs[0] 为空（开头斜杠），最后一段为空（结尾斜杠）
-        for (int i = 1; i < segs.length - 1; i++) {
-            cur.append("/").append(segs[i]);
-            mkcol(cur.toString() + "/", auth, insecure);
+        for (String seg : segs) {
+            if (seg == null || seg.isEmpty()) continue;
+            cur.append("/").append(seg);
+            String dirUrl = cur.toString() + "/";
+            if (created != null) {
+                if (!created.add(dirUrl)) continue; // 本轮已创建过，跳过
+            }
+            mkcol(dirUrl, auth, insecure);
         }
         return true;
+    }
+
+    /** 兼容旧签名：不复用已创建目录缓存。 */
+    public static boolean ensureParentDirs(String fileUrl, String user, String pass, boolean insecure)
+            throws IOException {
+        return ensureParentDirs(fileUrl, null, user, pass, insecure);
     }
 
     private static void mkcol(String dirUrl, String auth, boolean insecure) {
@@ -286,10 +307,14 @@ public class WebDavClient {
 
     /**
      * 列出某远程目录下的直接子项（PROPFIND Depth:1），返回 文件名 → 大小 的映射。
-     * 文件名已做 URL 解码，可与本地 DocumentsContract 名称直接比较。
+     * 文件名已做 URL 解码，可与本地 DocumentsContract 名称直接比较；目录（collection）不计入。
      * <p>
-     * 返回非空 Map（永不返回 null）：2xx 返回解析出的子项；404（目录不存在）或
-     * 其它错误/异常统一返回空 Map，调用方将其中文件全部视为「新增」处理。
+     * 返回值三种语义，调用方务必区分：
+     * <ul>
+     *   <li>非空/空 Map：请求成功。空 Map 表示该目录还不存在或为空，其下文件都是新增。</li>
+     *   <li><b>null</b>：请求失败（网络异常、5xx、403 等）。此时<b>不能</b>当作「远端为空」，
+     *       否则会把全部文件重新上传一遍——必须中止本轮同步。</li>
+     * </ul>
      */
     public static Map<String, Long> listDir(String server, String remotePath, String relDir,
                                             String user, String pass, boolean insecure) {
@@ -301,13 +326,23 @@ public class WebDavClient {
                     + "<D:resourcetype/><D:getcontentlength/></D:prop></D:propfind>";
             RawHttp.Response resp = RawHttp.requestBody("PROPFIND", dirUrl, auth, insecure,
                     body.getBytes(StandardCharsets.UTF_8));
-            if (resp.code < 200 || resp.code >= 300) {
-                // 404 = 目录不存在（其下文件都是新增）；其它错误保守当空
+            if (resp.code == 404 || resp.code == 410) {
+                // 目录确实不存在：其下文件都是新增，返回空 Map 是正确的
                 return new HashMap<>();
+            }
+            if (resp.code < 200 || resp.code >= 300) {
+                // 其它错误（403/405/500/网络层异常）：无法确认远端状态 → 通知调用方中止
+                Log.w(TAG, "PROPFIND 失败 " + dirUrl + " -> HTTP " + resp.code);
+                return null;
+            }
+            if (resp.body == null || resp.body.isEmpty()) {
+                Log.w(TAG, "PROPFIND 响应体为空 " + dirUrl);
+                return null;
             }
             return parsePropfind(dirUrl, resp.body);
         } catch (Exception e) {
-            return new HashMap<>();
+            Log.w(TAG, "PROPFIND 异常 " + dirUrl + " -> " + e.getMessage());
+            return null;
         }
     }
 
@@ -322,9 +357,12 @@ public class WebDavClient {
         Pattern respP = Pattern.compile("(?is)<(?:[A-Za-z0-9]+:)?response>(.*?)</(?:[A-Za-z0-9]+:)?response>");
         Pattern hrefP = Pattern.compile("(?i)<(?:[A-Za-z0-9]+:)?href>([^<]*)</(?:[A-Za-z0-9]+:)?href>");
         Pattern lenP = Pattern.compile("(?i)<(?:[A-Za-z0-9]+:)?getcontentlength>([^<]*)</(?:[A-Za-z0-9]+:)?getcontentlength>");
+        // <D:collection/> 表示这是目录，不应作为文件参与比对
+        Pattern colP = Pattern.compile("(?i)<(?:[A-Za-z0-9]+:)?collection[\\s/>]");
         Matcher rm = respP.matcher(xml);
         while (rm.find()) {
             String block = rm.group(1);
+            if (colP.matcher(block).find()) continue; // 跳过子目录
             Matcher hm = hrefP.matcher(block);
             if (!hm.find()) continue;
             String href = hm.group(1).trim();
@@ -334,7 +372,7 @@ public class WebDavClient {
             int s = norm.lastIndexOf('/');
             if (s >= 0) name = norm.substring(s + 1);
             if (name.isEmpty()) continue;
-            long size = -1;
+            long size = -1; // -1 = 服务器未返回长度（大小未知）
             Matcher lm = lenP.matcher(block);
             if (lm.find()) {
                 try {
@@ -369,9 +407,31 @@ public class WebDavClient {
         return s >= 0 ? rest.substring(s) : "/";
     }
 
+    /**
+     * 仅做 percent 解码（%XX → 字节，再按 UTF-8 还原）。
+     * <p>
+     * 不用 {@link URLDecoder}：它会把字面的 '+' 也转成空格（那是
+     * application/x-www-form-urlencoded 的规则，不适用于 URL 路径），
+     * 会让文件名里含 '+' 的文件永远匹配不上 → 每轮重复上传。
+     */
     private static String decode(String s) {
+        if (s == null) return "";
         try {
-            return URLDecoder.decode(s, StandardCharsets.UTF_8.name());
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] b = s.getBytes(StandardCharsets.ISO_8859_1);
+            for (int i = 0; i < b.length; i++) {
+                if (b[i] == '%' && i + 2 < b.length) {
+                    int hi = Character.digit((char) b[i + 1], 16);
+                    int lo = Character.digit((char) b[i + 2], 16);
+                    if (hi >= 0 && lo >= 0) {
+                        bos.write((hi << 4) | lo);
+                        i += 2;
+                        continue;
+                    }
+                }
+                bos.write(b[i]);
+            }
+            return new String(bos.toByteArray(), StandardCharsets.UTF_8);
         } catch (Exception e) {
             return s;
         }

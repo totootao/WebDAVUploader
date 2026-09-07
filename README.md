@@ -34,12 +34,25 @@
 
 仓库根目录包含编译并签名好的安装包：
 
-- `WebDAVUploader-v1.2.4.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
-- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.2.4.apk
+- `WebDAVUploader-v1.2.5.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
+- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.2.5.apk
 - 或到 [Releases](https://github.com/totootao/WebDAVUploader/releases) 页面下载
 
 ## 更新记录
 
+- **v1.2.5**：修复重复上传（重要）
+  - **修复远程目录创建失败**：`ensureParentDirs` 因 `String.split` 丢弃末尾空串，
+    导致单层目录一次 MKCOL 都不发、多层目录漏建最深一层 → PUT 全部 `409`、
+    远端永远为空 → 每轮都判定「全部待上传」而重复上传
+  - **远端列表获取失败不再全量重传**：PROPFIND 失败（网络异常 / 5xx / 403）时中止本轮并提示，
+    不再把「获取失败」误当成「远端为空」
+  - **大小未知不再每轮重传**：本地 SAF 未给出大小、或服务器未返回 Content-Length 时，
+    只要远端已存在同名文件就跳过，避免永远匹配不上
+  - **修复空文件损坏**：本地大小未知时改用 chunked 上传，
+    不再以 `Content-Length: 0` 把远端已有文件截断成空文件
+  - 目录（collection）不再计入远端文件数统计；URL 解码改为纯 percent 解码，
+    修复文件名含 `+` 时永远匹配不上的问题
+  - 同一轮内每个远程目录只 MKCOL 一次，减少请求数
 - **v1.2.4**：单文件上传失败不再中断任务
   - 某个文件上传失败（网络/HTTP 错误等）时跳过该文件、继续传下一个，整个任务不停止
   - 失败文件因远端没有完整副本，下一轮循环同步会自动重新比对并重试上传

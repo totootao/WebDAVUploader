@@ -11,9 +11,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -367,6 +369,8 @@ public class SyncEngine {
         // 这样每个远程目录只需一次 PROPFIND，远少于逐个文件 HEAD 探测。
         Notify.progress(app, app.getString(R.string.status_comparing));
         Map<String, Long> remote = new HashMap<>();
+        // 本轮已尝试创建过的远程目录，避免每个文件都逐层 MKCOL 一遍
+        Set<String> createdDirs = new HashSet<>();
         LinkedHashSet<String> parents = new LinkedHashSet<>();
         for (DocsTree.Entry e : files) parents.add(e.relDir);
         for (String parent : parents) {
@@ -379,6 +383,13 @@ public class SyncEngine {
                 return null;
             }
             Map<String, Long> m = WebDavClient.listDir(server, t.remotePath, parent, user, pass, insecure);
+            if (m == null) {
+                // 无法确认远端真实状态：必须中止本轮。
+                // 若在此处当作「远端为空」继续，就会把全部文件重传一遍（重复上传）。
+                String where = parent.isEmpty() ? (t.remotePath.isEmpty() ? "/" : t.remotePath)
+                        : parent;
+                return fail(t, "无法获取远程目录列表（" + where + "），已跳过本次同步以避免重复上传");
+            }
             for (Map.Entry<String, Long> it : m.entrySet()) {
                 String name = it.getKey();
                 String rel = parent.isEmpty() ? name : parent + "/" + name;
@@ -392,8 +403,7 @@ public class SyncEngine {
         int remoteCount = remote.size();
         int toUpload = 0;
         for (DocsTree.Entry e : files) {
-            Long rsize = remote.get(e.relPath());
-            if (rsize == null || e.size <= 0 || rsize != e.size) toUpload++;
+            if (needUpload(remote.get(e.relPath()), e.size)) toUpload++;
         }
         t.localCount = localCount;
         t.remoteCount = remoteCount;
@@ -417,19 +427,22 @@ public class SyncEngine {
             try {
                 String url = WebDavClient.buildPutUrlPath(server, t.remotePath, e.relPath());
 
-                // 比较远程列表：远端已有且大小一致则跳过（不再逐个 HEAD 探测）
+                // 比较远程列表：远端已存在且无需更新则跳过（不再逐个 HEAD 探测）
                 Long rsize = remote.get(e.relPath());
-                if (rsize != null && e.size > 0 && rsize == e.size) {
+                if (!needUpload(rsize, e.size)) {
                     t.skipped++;
                     continue;
                 }
 
-                WebDavClient.ensureParentDirs(url, user, pass, insecure);
+                WebDavClient.ensureParentDirs(url, createdDirs, user, pass, insecure);
 
                 try (InputStream in = DocsTree.open(app, tree, e.docId)) {
                     if (in == null) throw new IOException("无法打开文件");
                     final long[] lastPost = {0};
-                    int code = WebDavClient.putFile(url, in, e.size, user, pass, insecure, sent -> {
+                    // 本地大小未知（SAF 未给出）时传 -1 走 chunked；
+                    // 若仍传 0 会让 PUT 声明 Content-Length: 0，把远端文件截断成空文件。
+                    int code = WebDavClient.putFile(url, in, e.size > 0 ? e.size : -1,
+                            user, pass, insecure, sent -> {
                         if (e.size > 0) {
                             t.currentPct = (int) (sent * 100 / e.size);
                         }
@@ -471,6 +484,20 @@ public class SyncEngine {
         t.lastResult = app.getString(R.string.task_done, t.uploaded, t.skipped);
         persist();
         return new Result(t.uploaded, t.skipped, false);
+    }
+
+    /**
+     * 判断某个本地文件是否需要上传。
+     * <p>
+     * 只有「远端不存在」才一定要传。若任一侧大小未知——本地 SAF 未给出大小（{@code <=0}），
+     * 或服务器未返回 Content-Length（{@code <0}）——只要远端已存在同名文件就跳过。
+     * 否则这类文件会永远「匹配不上」，导致每一轮都全量重传。
+     */
+    private static boolean needUpload(Long remoteSize, long localSize) {
+        if (remoteSize == null) return true;   // 远端不存在 → 新增
+        if (localSize <= 0) return false;      // 本地大小未知：远端已有，跳过
+        if (remoteSize < 0) return false;      // 远端大小未知：视为已存在，跳过
+        return remoteSize != localSize;        // 两边都已知且不一致 → 内容有变更
     }
 
     private Result fail(Task t, String msg) {
