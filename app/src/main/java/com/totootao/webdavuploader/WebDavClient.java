@@ -7,11 +7,16 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
@@ -277,5 +282,98 @@ public class WebDavClient {
         conn.setConnectTimeout(20000);
         conn.setReadTimeout(60000);
         return conn;
+    }
+
+    /**
+     * 列出某远程目录下的直接子项（PROPFIND Depth:1），返回 文件名 → 大小 的映射。
+     * 文件名已做 URL 解码，可与本地 DocumentsContract 名称直接比较。
+     * <p>
+     * 返回非空 Map（永不返回 null）：2xx 返回解析出的子项；404（目录不存在）或
+     * 其它错误/异常统一返回空 Map，调用方将其中文件全部视为「新增」处理。
+     */
+    public static Map<String, Long> listDir(String server, String remotePath, String relDir,
+                                            String user, String pass, boolean insecure) {
+        String auth = basicAuth(user, pass);
+        String dirUrl = buildDirUrl(server, remotePath, relDir);
+        try {
+            String body = "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
+                    + "<D:propfind xmlns:D=\"DAV:\"><D:prop>"
+                    + "<D:resourcetype/><D:getcontentlength/></D:prop></D:propfind>";
+            RawHttp.Response resp = RawHttp.requestBody("PROPFIND", dirUrl, auth, insecure,
+                    body.getBytes(StandardCharsets.UTF_8));
+            if (resp.code < 200 || resp.code >= 300) {
+                // 404 = 目录不存在（其下文件都是新增）；其它错误保守当空
+                return new HashMap<>();
+            }
+            return parsePropfind(dirUrl, resp.body);
+        } catch (Exception e) {
+            return new HashMap<>();
+        }
+    }
+
+    /**
+     * 解析 PROPFIND Depth:1 的响应体，返回该目录下直接子项的 文件名 → 大小 映射。
+     * 跳过自身（href 与 dirUrl 一致的那个 response）。
+     */
+    private static Map<String, Long> parsePropfind(String dirUrl, String xml) {
+        Map<String, Long> map = new HashMap<>();
+        if (xml == null) return map;
+        String normSelf = stripTrailingSlash(pathOf(decode(dirUrl)));
+        Pattern respP = Pattern.compile("(?is)<(?:[A-Za-z0-9]+:)?response>(.*?)</(?:[A-Za-z0-9]+:)?response>");
+        Pattern hrefP = Pattern.compile("(?i)<(?:[A-Za-z0-9]+:)?href>([^<]*)</(?:[A-Za-z0-9]+:)?href>");
+        Pattern lenP = Pattern.compile("(?i)<(?:[A-Za-z0-9]+:)?getcontentlength>([^<]*)</(?:[A-Za-z0-9]+:)?getcontentlength>");
+        Matcher rm = respP.matcher(xml);
+        while (rm.find()) {
+            String block = rm.group(1);
+            Matcher hm = hrefP.matcher(block);
+            if (!hm.find()) continue;
+            String href = hm.group(1).trim();
+            String norm = stripTrailingSlash(pathOf(decode(href)));
+            if (norm.isEmpty() || norm.equals(normSelf)) continue; // 跳过自身
+            String name = norm;
+            int s = norm.lastIndexOf('/');
+            if (s >= 0) name = norm.substring(s + 1);
+            if (name.isEmpty()) continue;
+            long size = -1;
+            Matcher lm = lenP.matcher(block);
+            if (lm.find()) {
+                try {
+                    size = Long.parseLong(lm.group(1).trim());
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            map.put(name, size);
+        }
+        return map;
+    }
+
+    /** 组合远程目录 URL（结尾带 '/'），供 PROPFIND 使用。 */
+    private static String buildDirUrl(String server, String remoteDir, String relDir) {
+        String u = buildPutUrlPath(server, remoteDir, relDir == null ? "" : relDir);
+        if (!u.endsWith("/")) u += "/";
+        return u;
+    }
+
+    private static String stripTrailingSlash(String s) {
+        if (s == null) return "";
+        while (s.length() > 1 && s.endsWith("/")) s = s.substring(0, s.length() - 1);
+        return s;
+    }
+
+    /** 取 URL 的路径部分（去掉协议与 host），如 "http://h/dir/x" → "/dir/x"。 */
+    private static String pathOf(String url) {
+        if (url == null) return "/";
+        int i = url.indexOf("://");
+        String rest = (i >= 0) ? url.substring(i + 3) : url;
+        int s = rest.indexOf('/');
+        return s >= 0 ? rest.substring(s) : "/";
+    }
+
+    private static String decode(String s) {
+        try {
+            return URLDecoder.decode(s, StandardCharsets.UTF_8.name());
+        } catch (Exception e) {
+            return s;
+        }
     }
 }

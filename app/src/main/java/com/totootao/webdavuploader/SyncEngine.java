@@ -10,7 +10,10 @@ import android.util.Log;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -358,6 +361,29 @@ public class SyncEngine {
             return new Result(0, 0, false);
         }
 
+        // 先拉取远程目录列表，与本地比较，只同步「远端不存在或大小变化」的文件。
+        // 这样每个远程目录只需一次 PROPFIND，远少于逐个文件 HEAD 探测。
+        Notify.progress(app, app.getString(R.string.status_comparing));
+        Map<String, Long> remote = new HashMap<>();
+        LinkedHashSet<String> parents = new LinkedHashSet<>();
+        for (DocsTree.Entry e : files) parents.add(e.relDir);
+        for (String parent : parents) {
+            if (cancelRequested) {
+                t.status = Task.IDLE;
+                return new Result(t.uploaded, t.skipped, false, true);
+            }
+            if (Prefs.wifiOnly(app) && !NetUtil.isWifi(app)) {
+                t.status = Task.WAITING_WIFI;
+                return null;
+            }
+            Map<String, Long> m = WebDavClient.listDir(server, t.remotePath, parent, user, pass, insecure);
+            for (Map.Entry<String, Long> it : m.entrySet()) {
+                String name = it.getKey();
+                String rel = parent.isEmpty() ? name : parent + "/" + name;
+                remote.put(rel, it.getValue());
+            }
+        }
+
         for (DocsTree.Entry e : files) {
             if (cancelRequested) {
                 t.status = Task.IDLE;
@@ -374,13 +400,11 @@ public class SyncEngine {
             try {
                 String url = WebDavClient.buildPutUrlPath(server, t.remotePath, e.relPath());
 
-                // 增量判断：远端已存在且大小一致则跳过
-                if (e.size > 0) {
-                    long remote = WebDavClient.headSize(url, user, pass, insecure);
-                    if (remote == e.size) {
-                        t.skipped++;
-                        continue;
-                    }
+                // 比较远程列表：远端已有且大小一致则跳过（不再逐个 HEAD 探测）
+                Long rsize = remote.get(e.relPath());
+                if (rsize != null && e.size > 0 && rsize == e.size) {
+                    t.skipped++;
+                    continue;
                 }
 
                 WebDavClient.ensureParentDirs(url, user, pass, insecure);

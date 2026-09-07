@@ -20,6 +20,7 @@
     <string name="status_idle">就绪</string>
     <string name="status_syncing">正在同步 %1$s（%2$d/%3$d）</string>
     <string name="status_preparing">正在扫描本地文件…</string>
+    <string name="status_comparing">正在比对本地与远程文件列表…</string>
     <string name="status_all_done">同步完成：上传 %1$d 个，跳过 %2$d 个</string>
     <string name="status_all_done_part">同步结束（有任务失败）：上传 %1$d 个，跳过 %2$d 个</string>
     <string name="status_queue">，另有 %1$d 个任务排队（同一时间只同步一个）</string>

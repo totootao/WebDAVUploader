@@ -19,7 +19,7 @@
   - 实时进度：当前文件、文件数进度、已上传 / 已跳过计数
   - 记录上次同步时间与结果；可编辑或删除任务
 - **单向上传**：只上传、不下载、不删除远端任何文件
-- **增量跳过**：远端已存在且大小一致的文件自动跳过，不重复上传
+- **先比对远程文件列表**：同步前按目录一次性拉取远程文件列表（每个目录一次 PROPFIND），与本地对比，只上传「远端不存在或大小变化」的文件；不再逐文件 HEAD 探测，文件越多越省流量与请求数
 - **仅 WiFi 同步**：非 WiFi 时任务挂起显示「等待 WiFi」，连上 WiFi 自动续传
 - **启动自动同步**：打开软件即自动同步全部「未暂停且已过冷却」的任务；
   **同一时间只同步一个任务**，其余排队依次执行
@@ -34,12 +34,13 @@
 
 仓库根目录包含编译并签名好的安装包：
 
-- `WebDAVUploader-v1.2.0.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
-- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.2.0.apk
+- `WebDAVUploader-v1.2.1.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
+- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.2.1.apk
 - 或到 [Releases](https://github.com/totootao/WebDAVUploader/releases) 页面下载
 
 ## 更新记录
 
+- **v1.2.1**：同步前先比对远程文件列表（目录级 PROPFIND），只上传本地新增 / 变更的文件，显著减少请求数与流量
 - **v1.2.0**：新增循环同步与启动自动同步
   - 启动软件自动同步全部任务（同一时间只跑一个任务，其余排队）
   - 任务完成后进入冷却（默认 1 天），冷却结束自动再同步；冷却时长可选 6/12/24/48 小时
