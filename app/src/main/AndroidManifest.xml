@@ -7,6 +7,11 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Android 13+ 显示同步通知需要 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 前台同步服务（Android 9+ 必需）；dataSync 类型（Android 14 targetSdk 必需） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- 精确闹钟补充触发（Android 12+ 必需，否则 setExactAndAllowWhileIdle 抛异常） -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:allowBackup="true"
@@ -27,11 +32,38 @@
             </intent-filter>
         </activity>
 
-        <!-- 后台循环同步（由系统 JobScheduler 调度，无需常驻服务） -->
+        <!-- 后台循环同步：JobScheduler 触发后由前台服务承载长任务 -->
         <service
             android:name=".SyncJobService"
             android:exported="true"
             android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- 真正执行上传的前台服务：常驻低优先级通知，防厂商神隐模式回收 -->
+        <service
+            android:name=".SyncForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- 开机 / 升级 / 解锁后重新排程（需用户在自启动白名单中允许本应用） -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.USER_PRESENT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 精确闹钟接收器：冷却到期时启动前台同步服务 -->
+        <receiver
+            android:name=".AlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.totootao.webdavuploader.action.SYNC_ALARM" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

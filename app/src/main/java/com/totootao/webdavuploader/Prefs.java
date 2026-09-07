@@ -23,6 +23,7 @@ public class Prefs {
     private static final String K_AUTO_REPEAT = "auto_repeat";
     private static final String K_COOLDOWN_HOURS = "cooldown_hours";
     private static final String K_TASKS = "tasks";
+    private static final String K_SETUP = "setup_guide_shown";
 
     /** 冷却时长候选（小时） */
     public static final int[] COOLDOWN_OPTIONS = {6, 12, 24, 48};
@@ -51,6 +52,15 @@ public class Prefs {
 
     public static long coolDownMillis(Context c) {
         return coolDownHours(c) * 60L * 60L * 1000L;
+    }
+
+    /** 首次启动的后台保活引导是否已展示过。 */
+    public static boolean setupGuideShown(Context c) {
+        return sp(c).getBoolean(K_SETUP, false);
+    }
+
+    public static void markSetupGuideShown(Context c) {
+        sp(c).edit().putBoolean(K_SETUP, true).apply();
     }
 
     public static void saveConfig(Context c, String server, String user, String pass,

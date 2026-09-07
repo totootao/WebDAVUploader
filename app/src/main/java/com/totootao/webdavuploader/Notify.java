@@ -14,8 +14,8 @@ import android.os.Build;
  */
 public class Notify {
 
-    private static final String CHANNEL = "webdav_sync";
-    private static final int ID = 2001;
+    static final String CHANNEL = "webdav_sync";
+    static final int ID = 2001;
 
     private static volatile String lastText = "";
     private static volatile long lastAt = 0;
@@ -97,6 +97,19 @@ public class Notify {
         } catch (SecurityException ignored) {
         } catch (Exception ignored) {
         }
+    }
+
+    /** 前台服务常驻通知（与同步进度通知共用同一 ID，复用同一条通知）。 */
+    public static Notification foreground(Context c) {
+        ensureChannel(c);
+        return builder(c)
+                .setSmallIcon(R.drawable.ic_stat_sync)
+                .setContentTitle(c.getString(R.string.notify_title))
+                .setContentText(c.getString(R.string.fg_running))
+                .setContentIntent(contentIntent(c))
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .build();
     }
 
     public static void cancel(Context c) {

@@ -102,4 +102,13 @@
 
     <!-- 通用 -->
     <string name="confirm_delete">删除任务「%1$s」？仅移除同步配置，不会删除本地或远程文件。</string>
+
+    <!-- 后台保活引导 -->
+    <string name="fg_running">后台同步中（点击打开）</string>
+    <string name="setup_guide_title">后台保活设置</string>
+    <string name="setup_guide_msg">为保证本应用在红米后台持续自动同步，请在系统设置中：\n1. 授权管理 → 自启动 → 开启本应用\n2. 省电与电池 → 应用智能省电 → 设为「无限制」\n3. 多任务界面长按本应用卡片 → 锁定（防止被一键清理）</string>
+    <string name="setup_guide_miui">去小米自启动设置</string>
+    <string name="setup_guide_detail">应用详情（电池无限制）</string>
+    <string name="setup_guide_later">稍后</string>
+    <string name="exact_alarm_denied">无法使用精确闹钟，定时同步可能延迟。可在系统设置中授予「闹钟与提醒」权限后重试。</string>
 </resources>

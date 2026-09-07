@@ -14,6 +14,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.DocumentsContract;
+import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -224,6 +225,49 @@ public class MainActivity extends Activity {
             Toast.makeText(this, R.string.toast_launch_sync_none, Toast.LENGTH_SHORT).show();
         }
         refreshAll();
+        maybeShowSetupGuide();
+        checkExactAlarm();
+    }
+
+    /** 首次启动引导用户到厂商后台保活设置（自启动 + 电池无限制）。 */
+    private void maybeShowSetupGuide() {
+        if (Prefs.setupGuideShown(this)) return;
+        Prefs.markSetupGuideShown(this);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.setup_guide_title)
+                .setMessage(R.string.setup_guide_msg)
+                .setNegativeButton(R.string.setup_guide_later, null)
+                .setNeutralButton(R.string.setup_guide_miui, (d, w) -> openMiuiAutostart())
+                .setPositiveButton(R.string.setup_guide_detail, (d, w) -> openAppDetails())
+                .show();
+    }
+
+    private void openMiuiAutostart() {
+        try {
+            Intent i = new Intent();
+            i.setClassName("com.miui.securitycenter",
+                    "com.miui.permcenter.autosettings.AutoSettingsActivity");
+            i.putExtra("packageName", getPackageName());
+            startActivity(i);
+        } catch (Exception e) {
+            openAppDetails();
+        }
+    }
+
+    private void openAppDetails() {
+        try {
+            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            i.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(i);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** 精确闹钟权限检查（Android 12+）：被撤销时定时同步可能延迟。 */
+    private void checkExactAlarm() {
+        if (Build.VERSION.SDK_INT >= 33 && !Scheduler.canExact(this)) {
+            Toast.makeText(this, R.string.exact_alarm_denied, Toast.LENGTH_LONG).show();
+        }
     }
 
     @Override
