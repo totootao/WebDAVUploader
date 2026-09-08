@@ -380,14 +380,16 @@ public class MainActivity extends Activity {
             if (t.status == Task.WAITING_WIFI) waiting = true;
         }
         if (running != null) {
+            // 只统计「需要同步」的文件：分母是待同步数，分子是已同步数，
+            // 服务器上已有的文件已跳过，不占进度
             String txt = getString(R.string.status_syncing, running.name,
-                    running.uploaded + running.skipped, running.total);
+                    running.uploaded, running.total);
             int queued = engine.pendingCount();
             if (queued > 0) txt += getString(R.string.status_queue, queued);
             tvOverall.setText(txt);
             if (running.total > 0) {
                 pbOverall.setProgress(Math.min(100,
-                        (running.uploaded + running.skipped) * 100 / running.total));
+                        running.uploaded * 100 / running.total));
             }
         } else if (waiting || engine.pending()) {
             tvOverall.setText(R.string.status_waiting_wifi);
@@ -641,7 +643,7 @@ public class MainActivity extends Activity {
                 case Task.RUNNING:
                     pbTask.setVisibility(View.VISIBLE);
                     pbTask.setProgress(t.total > 0
-                            ? Math.min(100, (t.uploaded + t.skipped) * 100 / t.total) : 0);
+                            ? Math.min(100, t.uploaded * 100 / t.total) : 0);
                     tvStatus.setText(t.currentFile.isEmpty()
                             ? getString(R.string.status_preparing)
                             : getString(R.string.task_uploading, t.currentFile));
@@ -651,7 +653,7 @@ public class MainActivity extends Activity {
                     pbTask.setVisibility(View.VISIBLE);
                     pbTask.setProgress(100);
                     tvStatus.setText(t.lastResult.isEmpty()
-                            ? getString(R.string.task_done, t.uploaded, t.skipped)
+                            ? getString(R.string.task_done, t.uploaded)
                             : t.lastResult);
                     statusColor = R.color.success;
                     break;
@@ -678,10 +680,10 @@ public class MainActivity extends Activity {
             }
             tvStatus.setTextColor(getResources().getColor(statusColor));
 
-            // 比对统计：开始同步或恢复同步、递交完目录后展示三项数字（仅同步中显示）
-            if (t.status == Task.RUNNING && t.localCount > 0) {
+            // 只展示「本次需要同步」的文件数；服务器上已有的文件无需同步，不展示（仅同步中显示）
+            if (t.status == Task.RUNNING && t.compared) {
                 tvCompare.setVisibility(View.VISIBLE);
-                tvCompare.setText(getString(R.string.task_compare, t.localCount, t.remoteCount, t.toUpload));
+                tvCompare.setText(getString(R.string.task_compare, t.toUpload));
             } else {
                 tvCompare.setVisibility(View.GONE);
             }

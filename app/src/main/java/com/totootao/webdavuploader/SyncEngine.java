@@ -313,9 +313,9 @@ public class SyncEngine {
             } else if (fw || pending) {
                 Notify.done(app, app.getString(R.string.status_waiting_wifi));
             } else if (fe) {
-                Notify.done(app, app.getString(R.string.status_all_done_part, fu, fs, fc));
+                Notify.done(app, app.getString(R.string.status_all_done_part, fu, fc));
             } else {
-                Notify.done(app, app.getString(R.string.status_all_done, fu, fs));
+                Notify.done(app, app.getString(R.string.status_all_done, fu));
             }
             // 一轮结束后重排下一次循环同步
             Scheduler.reschedule(app);
@@ -335,6 +335,8 @@ public class SyncEngine {
         t.skipped = 0;
         t.total = 0;
         t.failed = 0;
+        t.compared = false;
+        t.toUpload = 0;
         t.currentPct = 0;
         t.currentFile = "";
         t.errorMessage = "";
@@ -397,19 +399,18 @@ public class SyncEngine {
             }
         }
 
-        // 比对完成：统计本地 / 远端 / 待上传文件数，立即反馈给用户
-        // （开始同步或恢复同步时，递交完目录即可看到这三项数字）
-        int localCount = files.size();
-        int remoteCount = remote.size();
+        // 比对完成：只统计「本次需要同步」的文件数。
+        // 服务器上已存在的文件无需同步，不计入展示。
         int toUpload = 0;
         for (DocsTree.Entry e : files) {
             if (needUpload(remote.get(e.relPath()), e.size)) toUpload++;
         }
-        t.localCount = localCount;
-        t.remoteCount = remoteCount;
+        t.compared = true;
         t.toUpload = toUpload;
+        // 进度分母改为待同步数：跳过的文件不占进度
+        t.total = toUpload;
         notifyChanged();
-        Notify.progress(app, app.getString(R.string.status_compare_done, localCount, remoteCount, toUpload));
+        Notify.progress(app, app.getString(R.string.status_compare_done, toUpload));
 
         for (DocsTree.Entry e : files) {
             if (cancelRequested) {
@@ -476,12 +477,12 @@ public class SyncEngine {
         t.status = Task.DONE;
         t.lastSync = System.currentTimeMillis();
         if (t.failed > 0) {
-            t.lastResult = app.getString(R.string.task_done_part, t.uploaded, t.skipped, t.failed);
+            t.lastResult = app.getString(R.string.task_done_part, t.uploaded, t.failed);
             persist();
             // 任务整体仍标记 DONE（不中断）；失败文件下一轮循环同步自动重试
             return new Result(t.uploaded, t.skipped, true, false, t.failed);
         }
-        t.lastResult = app.getString(R.string.task_done, t.uploaded, t.skipped);
+        t.lastResult = app.getString(R.string.task_done, t.uploaded);
         persist();
         return new Result(t.uploaded, t.skipped, false);
     }

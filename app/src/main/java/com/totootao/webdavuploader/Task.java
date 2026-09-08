@@ -37,9 +37,11 @@ public class Task {
     public transient String currentFile = "";
     public transient String errorMessage = "";
 
-    /** 比对统计（不持久化）：本地文件数、远端文件数、待上传文件数 */
-    public transient int localCount = 0;
-    public transient int remoteCount = 0;
+    /**
+     * 比对结果（不持久化）：是否已完成比对、本次需要同步（上传）的文件数。
+     * 服务器上已存在的文件无需同步，不参与统计与展示。
+     */
+    public transient boolean compared = false;
     public transient int toUpload = 0;
     public transient int failed = 0;
 

@@ -34,12 +34,16 @@
 
 仓库根目录包含编译并签名好的安装包：
 
-- `WebDAVUploader-v1.2.5.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
-- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.2.5.apk
+- `WebDAVUploader-v1.2.6.apk`（v2 签名，Android 7.0+ / API 24 起可安装）
+- 直链：https://github.com/totootao/WebDAVUploader/raw/main/WebDAVUploader-v1.2.6.apk
 - 或到 [Releases](https://github.com/totootao/WebDAVUploader/releases) 页面下载
 
 ## 更新记录
 
+- **v1.2.6**：同步状态只显示「需要同步」的文件数
+  - 任务卡片同步中只显示 **待同步 N 个文件**，不再显示本地总数与服务器已有文件数
+  - 顶部与卡片进度条改为「已同步 / 待同步」，服务器上已有的文件不占进度
+  - 完成结果简化为「已同步 N 个文件」（有失败时追加失败数），去掉「跳过」计数
 - **v1.2.5**：修复重复上传（重要）
   - **修复远程目录创建失败**：`ensureParentDirs` 因 `String.split` 丢弃末尾空串，
     导致单层目录一次 MKCOL 都不发、多层目录漏建最深一层 → PUT 全部 `409`、
